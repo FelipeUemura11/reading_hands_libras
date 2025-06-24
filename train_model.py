@@ -9,21 +9,20 @@ from sklearn.metrics import classification_report, confusion_matrix
 import matplotlib.pyplot as plt
 
 def normalize_landmarks(landmarks, image_width=640, image_height=480):
-
     if len(landmarks) < 21:
         return None
     
-    # Extrair coordenadas do pulso (landmark 0)
+    # extrair coordenadas do pulso (landmark 0)
     wrist_x, wrist_y = landmarks[0][1], landmarks[0][2]
     
     normalized_features = []
     
-    # Normalizar todos os landmarks em relação ao pulso
+    # normalizar todos os landmarks em relacao ao pulso
     for i in range(21):
-        if i == 0:  # Pulso - usar coordenadas absolutas normalizadas
+        if i == 0:  # pulso - usar coordenadas absolutas normalizadas
             x_norm = landmarks[i][1] / image_width
             y_norm = landmarks[i][2] / image_height
-        else:  # Outros landmarks - coordenadas relativas ao pulso
+        else:  # outros landmarks - coordenadas relativas ao pulso
             x_norm = (landmarks[i][1] - wrist_x) / image_width
             y_norm = (landmarks[i][2] - wrist_y) / image_height
         
@@ -38,14 +37,14 @@ def calculate_hand_features(landmarks):
     features = []
     wrist = np.array([landmarks[0][1], landmarks[0][2]])
     
-    # Distâncias dos dedos ao pulso
-    finger_tips = [4, 8, 12, 16, 20]  # Pontas dos dedos
+    # distancias dos dedos ao pulso
+    finger_tips = [4, 8, 12, 16, 20]  # pontas dos dedos
     for tip_idx in finger_tips:
         tip = np.array([landmarks[tip_idx][1], landmarks[tip_idx][2]])
         distance = np.linalg.norm(tip - wrist)
         features.append(distance)
     
-    # Distâncias entre pontas dos dedos
+    # distancias entre pontas dos dedos
     for i in range(len(finger_tips)):
         for j in range(i+1, len(finger_tips)):
             tip1 = np.array([landmarks[finger_tips[i]][1], landmarks[finger_tips[i]][2]])
@@ -53,14 +52,14 @@ def calculate_hand_features(landmarks):
             distance = np.linalg.norm(tip1 - tip2)
             features.append(distance)
     
-    # Ângulos entre dedos
-    finger_joints = [3, 7, 11, 15, 19]  # Juntas dos dedos
+    # angulos entre dedos
+    finger_joints = [3, 7, 11, 15, 19]  # juntas dos dedos
     for i in range(len(finger_joints)):
         for j in range(i+1, len(finger_joints)):
             joint1 = np.array([landmarks[finger_joints[i]][1], landmarks[finger_joints[i]][2]])
             joint2 = np.array([landmarks[finger_joints[j]][1], landmarks[finger_joints[j]][2]])
             
-            # Calcular ângulo entre vetores
+            # calcular angulo entre vetores
             v1 = joint1 - wrist
             v2 = joint2 - wrist
             
@@ -78,7 +77,7 @@ def augment_data(landmarks, label, num_augmentations=5):
     augmented_data = []
     
     for _ in range(num_augmentations):
-        # Adicionar ruído gaussiano
+        # adicionar ruido gaussiano
         noise_factor = np.random.uniform(0.01, 0.03)
         augmented_landmarks = []
         
@@ -89,33 +88,33 @@ def augment_data(landmarks, label, num_augmentations=5):
         
         augmented_data.append((augmented_landmarks, label))
     
-    # Adicionar variações de escala
+    # adicionar variacoes de escala
     for scale_factor in [0.95, 1.05]:
         scaled_landmarks = []
         wrist_x, wrist_y = landmarks[0][1], landmarks[0][2]
         
         for landmark in landmarks:
-            if landmark[0] == 0:  # Pulso - não escalar
+            if landmark[0] == 0:  # pulso - nao escalar
                 scaled_landmarks.append(landmark)
             else:
-                # Escalar em relação ao pulso
+                # escalar em relacao ao pulso
                 dx = (landmark[1] - wrist_x) * scale_factor
                 dy = (landmark[2] - wrist_y) * scale_factor
                 scaled_landmarks.append((landmark[0], wrist_x + dx, wrist_y + dy))
         
         augmented_data.append((scaled_landmarks, label))
     
-    # Adicionar rotação leve
-    for angle in [-5, 5]:  # Rotação de ±5 graus
+    # adicionar rotacao leve
+    for angle in [-5, 5]:  # rotacao de ±5 graus
         rotated_landmarks = []
         wrist_x, wrist_y = landmarks[0][1], landmarks[0][2]
         angle_rad = np.radians(angle)
         
         for landmark in landmarks:
-            if landmark[0] == 0:  # Pulso - não rotacionar
+            if landmark[0] == 0:  # pulso - nao rotacionar
                 rotated_landmarks.append(landmark)
             else:
-                # Rotacionar em relação ao pulso
+                # rotacionar em relacao ao pulso
                 dx = landmark[1] - wrist_x
                 dy = landmark[2] - wrist_y
                 
@@ -133,7 +132,7 @@ def load_training_data():
     all_labels = []
     
     if not os.path.exists('model_hands'):
-        print("Pasta 'model_hands' não encontrada!")
+        print("Pasta 'model_hands' nao encontrada!")
         print("Execute primeiro a coleta de dados usando main.py")
         return None, None, None
     
@@ -147,7 +146,7 @@ def load_training_data():
     
     print(f"Encontrados {len(csv_files)} arquivos de dados")
     
-    # Contar amostras por letra
+    # contar amostras por letra
     letter_counts = {}
     
     for csv_file in csv_files:
@@ -165,22 +164,22 @@ def load_training_data():
                 y = row[f'y_{i}']
                 landmarks.append((i, x, y))
             
-            # Normalizar landmarks
+            # normalizar landmarks
             normalized_features = normalize_landmarks(landmarks)
             if normalized_features is None:
                 continue
             
-            # Calcular features adicionais
+            # calcular features adicionais
             additional_features = calculate_hand_features(landmarks)
             
-            # Combinar features
+            # combinar features
             all_features = normalized_features + additional_features
             
             all_data.append(all_features)
-            all_labels.append(ord(letter) - ord('A'))  # Converter letras para números (0-25)
+            all_labels.append(ord(letter) - ord('A'))  # converter letras para numeros (0-25)
             letter_counts[letter] += 1
             
-            # Data augmentation mais robusto
+            # data augmentation mais robusto
             augmented_samples = augment_data(landmarks, ord(letter) - ord('A'))
             for aug_landmarks, aug_label in augmented_samples:
                 aug_normalized = normalize_landmarks(aug_landmarks)
@@ -192,28 +191,42 @@ def load_training_data():
                     letter_counts[letter] += 1
     
     if not all_data:
-        print("Nenhum dado de treinamento válido encontrado!")
+        print("Nenhum dado de treinamento valido encontrado!")
         return None, None, None
     
-    print("\nDistribuição de amostras por letra:")
+    print("\nDistribuicao de amostras por letra:")
     for letter in sorted(letter_counts.keys()):
         print(f"{letter}: {letter_counts[letter]} amostras")
-        
-    return np.array(all_data), np.array(all_labels), len(all_data[0])
+    
+    # converter para arrays numpy
+    X = np.array(all_data)
+    y = np.array(all_labels)
+    
+    # normalizar dados
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    
+    # salvar parametros do scaler
+    scaler_params = {
+        'mean': scaler.mean_,
+        'scale': scaler.scale_
+    }
+    
+    if not os.path.exists('model_hands'):
+        os.makedirs('model_hands')
+    
+    np.save(os.path.join('model_hands', 'scaler_params.npy'), scaler_params)
+    
+    return X_scaled, y, scaler_params
 
 def create_improved_model(input_shape, num_classes=26):
-
     model = tf.keras.Sequential([
-        # Camada de entrada
-        tf.keras.layers.Dense(512, activation='relu', input_shape=(input_shape,)),
+        # camada de entrada
+        tf.keras.layers.Dense(256, activation='relu', input_shape=input_shape),
         tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.Dropout(0.4),
+        tf.keras.layers.Dropout(0.3),
         
-        # Camadas intermediárias
-        tf.keras.layers.Dense(256, activation='relu'),
-        tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.Dropout(0.4),
-        
+        # camadas intermediarias
         tf.keras.layers.Dense(128, activation='relu'),
         tf.keras.layers.BatchNormalization(),
         tf.keras.layers.Dropout(0.3),
@@ -222,15 +235,13 @@ def create_improved_model(input_shape, num_classes=26):
         tf.keras.layers.BatchNormalization(),
         tf.keras.layers.Dropout(0.2),
         
-        # Camada de saída
+        # camada de saida
         tf.keras.layers.Dense(num_classes, activation='softmax')
     ])
     
-    # Compilar com learning rate fixo (removido o schedule para evitar conflito)
-    optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
-    
+    # compilar modelo
     model.compile(
-        optimizer=optimizer,
+        optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
         loss='sparse_categorical_crossentropy',
         metrics=['accuracy']
     )
@@ -238,150 +249,192 @@ def create_improved_model(input_shape, num_classes=26):
     return model
 
 def train_model_with_cross_validation():
+    print("=== TREINAMENTO DO MODELO DE LIBRAS ===")
     print("Carregando dados de treinamento...")
-    X, y, input_shape = load_training_data()
     
-    if X is None or y is None:
+    # carregar dados
+    X, y, scaler_params = load_training_data()
+    if X is None:
         return
     
-    print(f"Dados carregados: {len(X)} amostras")
-    print(f"Shape dos dados: {X.shape}")
-    print(f"Classes únicas: {np.unique(y)}")
+    print(f"Forma dos dados: {X.shape}")
+    print(f"Numero de classes: {len(np.unique(y))}")
     
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-    
-    # CROSS VALIDATION
+    # configurar validacao cruzada
     n_splits = 5
     kfold = KFold(n_splits=n_splits, shuffle=True, random_state=42)
     
-    fold_scores = []
     fold_histories = []
+    fold_accuracies = []
     
-    print(f"\nIniciando Cross Validation com {n_splits} folds...")
+    print(f"\nIniciando validacao cruzada com {n_splits} folds...")
     
-    for fold, (train_idx, val_idx) in enumerate(kfold.split(X_scaled), 1):
-        print(f"\n>> Fold {fold}/{n_splits} <<")
+    for fold, (train_idx, val_idx) in enumerate(kfold.split(X)):
+        print(f"\n--- Fold {fold + 1}/{n_splits} ---")
         
-        X_train, X_val = X_scaled[train_idx], X_scaled[val_idx]
+        # dividir dados
+        X_train, X_val = X[train_idx], X[val_idx]
         y_train, y_val = y[train_idx], y[val_idx]
         
-        model = create_improved_model(input_shape)
+        print(f"Dados de treinamento: {X_train.shape[0]} amostras")
+        print(f"Dados de validacao: {X_val.shape[0]} amostras")
         
-        # Callbacks para melhor treinamento
+        # criar modelo
+        model = create_improved_model((X.shape[1],))
+        
+        # callbacks
         early_stopping = tf.keras.callbacks.EarlyStopping(
             monitor='val_accuracy',
-            patience=15,
+            patience=10,
             restore_best_weights=True
         )
         
-        # Treinar modelo
+        reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(
+            monitor='val_loss',
+            factor=0.5,
+            patience=5,
+            min_lr=1e-7
+        )
+        
+        # treinar modelo
         history = model.fit(
             X_train, y_train,
             validation_data=(X_val, y_val),
             epochs=100,
             batch_size=32,
-            callbacks=[early_stopping],
+            callbacks=[early_stopping, reduce_lr],
             verbose=1
         )
         
-        # Avaliar modelo
+        # avaliar modelo
         val_loss, val_accuracy = model.evaluate(X_val, y_val, verbose=0)
-        fold_scores.append(val_accuracy)
+        fold_accuracies.append(val_accuracy)
         fold_histories.append(history)
         
-        print(f"Fold {fold} - Validação Accuracy: {val_accuracy:.4f}")
+        print(f"Acuracia do fold {fold + 1}: {val_accuracy:.4f}")
     
-    # Resultados finais
-    print(f"\n>> RESULTADOS FINAIS <<")
-    print(f"Accuracy média: {np.mean(fold_scores):.4f} ± {np.std(fold_scores):.4f}")
-    print(f"Melhor fold: {np.argmax(fold_scores) + 1} ({max(fold_scores):.4f})")
+    # resultados da validacao cruzada
+    print(f"\n=== RESULTADOS DA VALIDACAO CRUZADA ===")
+    print(f"Acuracia media: {np.mean(fold_accuracies):.4f} ± {np.std(fold_accuracies):.4f}")
+    print(f"Melhor acuracia: {np.max(fold_accuracies):.4f}")
+    print(f"Pior acuracia: {np.min(fold_accuracies):.4f}")
     
-    # Treinar modelo final com todos os dados
-    print("\nTreinando modelo final com todos os dados...")
-    final_model = create_improved_model(input_shape)
+    # treinar modelo final com todos os dados
+    print(f"\n=== TREINAMENTO DO MODELO FINAL ===")
+    final_model = create_improved_model((X.shape[1],))
     
-    # Callbacks para modelo final
+    # dividir dados para treinamento final
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
+    
+    print(f"Dados de treinamento final: {X_train.shape[0]} amostras")
+    print(f"Dados de teste: {X_test.shape[0]} amostras")
+    
+    # callbacks para modelo final
     early_stopping = tf.keras.callbacks.EarlyStopping(
-        monitor='accuracy',
-        patience=20,
+        monitor='val_accuracy',
+        patience=15,
         restore_best_weights=True
     )
     
-    # Treinar modelo final
+    reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(
+        monitor='val_loss',
+        factor=0.5,
+        patience=8,
+        min_lr=1e-7
+    )
+    
+    # treinar modelo final
     final_history = final_model.fit(
-        X_scaled, y,
+        X_train, y_train,
+        validation_data=(X_test, y_test),
         epochs=150,
         batch_size=32,
-        callbacks=[early_stopping],
+        callbacks=[early_stopping, reduce_lr],
         verbose=1
     )
     
-    # Salvar modelo e parâmetros
-    if not os.path.exists('model_hands'):
-        os.makedirs('model_hands')
+    # avaliar modelo final
+    test_loss, test_accuracy = final_model.evaluate(X_test, y_test, verbose=0)
+    print(f"\nAcuracia final no teste: {test_accuracy:.4f}")
     
+    # fazer predicoes
+    y_pred = np.argmax(final_model.predict(X_test), axis=1)
+    
+    # relatorio de classificacao
+    print("\n=== RELATORIO DE CLASSIFICACAO ===")
+    # usar apenas as classes que existem nos dados
+    unique_classes = sorted(np.unique(y))
+    target_names = [chr(i + ord('A')) for i in unique_classes]
+    print(classification_report(y_test, y_pred, target_names=target_names))
+    
+    # matriz de confusao
+    cm = confusion_matrix(y_test, y_pred)
+    print("\n=== MATRIZ DE CONFUSAO ===")
+    print("Formato: [Linha = Verdadeiro, Coluna = Predito]")
+    print("Classes:", target_names)
+    print(cm)
+    
+    # salvar modelo
     model_path = os.path.join('model_hands', 'libras_model_improved.h5')
-    scaler_path = os.path.join('model_hands', 'scaler_params.npy')
-    
     final_model.save(model_path)
-    np.save(scaler_path, {
-        'mean': scaler.mean_,
-        'scale': scaler.scale_
-    })
-    
     print(f"\nModelo salvo em: {model_path}")
-    print(f"Parâmetros do scaler salvos em: {scaler_path}")
     
-    # Avaliação final
-    final_accuracy = final_model.evaluate(X_scaled, y, verbose=0)[1]
-    print(f"Accuracy final: {final_accuracy:.4f}")
-    
-    # Plotar gráficos de treinamento
+    # plotar historico de treinamento
     plot_training_history(final_history, fold_histories)
+    
+    return final_model, test_accuracy
 
 def plot_training_history(final_history, fold_histories):
-    """
-    Plota gráficos do histórico de treinamento
-    """
-    try:
-        plt.figure(figsize=(15, 5))
-        
-        # Gráfico do modelo final
-        plt.subplot(1, 3, 1)
-        plt.plot(final_history.history['accuracy'], label='Treino')
-        plt.title('Modelo Final - Accuracy')
-        plt.xlabel('Época')
-        plt.ylabel('Accuracy')
-        plt.legend()
-        plt.grid(True)
-        
-        plt.subplot(1, 3, 2)
-        plt.plot(final_history.history['loss'], label='Treino')
-        plt.title('Modelo Final - Loss')
-        plt.xlabel('Época')
-        plt.ylabel('Loss')
-        plt.legend()
-        plt.grid(True)
-        
-        # Gráfico dos folds
-        plt.subplot(1, 3, 3)
-        fold_accuracies = [h.history['val_accuracy'][-1] for h in fold_histories]
-        plt.bar(range(1, len(fold_accuracies) + 1), fold_accuracies)
-        plt.title('Accuracy por Fold')
-        plt.xlabel('Fold')
-        plt.ylabel('Accuracy')
-        plt.grid(True)
-        
-        plt.tight_layout()
-        plt.savefig('model_hands/training_history.png', dpi=300, bbox_inches='tight')
-        plt.show()
-        
-        print("Gráficos salvos em: model_hands/training_history.png")
-        
-    except Exception as e:
-        print(f"Erro ao plotar gráficos: {e}")
+    # criar figura com subplots
+    fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+    fig.suptitle('Historico de Treinamento - Modelo de Libras', fontsize=16)
+    
+    # plot 1: acuracia do modelo final
+    axes[0, 0].plot(final_history.history['accuracy'], label='Treinamento')
+    axes[0, 0].plot(final_history.history['val_accuracy'], label='Validacao')
+    axes[0, 0].set_title('Acuracia - Modelo Final')
+    axes[0, 0].set_xlabel('Epoca')
+    axes[0, 0].set_ylabel('Acuracia')
+    axes[0, 0].legend()
+    axes[0, 0].grid(True)
+    
+    # plot 2: loss do modelo final
+    axes[0, 1].plot(final_history.history['loss'], label='Treinamento')
+    axes[0, 1].plot(final_history.history['val_loss'], label='Validacao')
+    axes[0, 1].set_title('Loss - Modelo Final')
+    axes[0, 1].set_xlabel('Epoca')
+    axes[0, 1].set_ylabel('Loss')
+    axes[0, 1].legend()
+    axes[0, 1].grid(True)
+    
+    # plot 3: acuracia dos folds
+    for i, history in enumerate(fold_histories):
+        axes[1, 0].plot(history.history['val_accuracy'], label=f'Fold {i+1}', alpha=0.7)
+    axes[1, 0].set_title('Acuracia - Validacao Cruzada')
+    axes[1, 0].set_xlabel('Epoca')
+    axes[1, 0].set_ylabel('Acuracia')
+    axes[1, 0].legend()
+    axes[1, 0].grid(True)
+    
+    # plot 4: loss dos folds
+    for i, history in enumerate(fold_histories):
+        axes[1, 1].plot(history.history['val_loss'], label=f'Fold {i+1}', alpha=0.7)
+    axes[1, 1].set_title('Loss - Validacao Cruzada')
+    axes[1, 1].set_xlabel('Epoca')
+    axes[1, 1].set_ylabel('Loss')
+    axes[1, 1].legend()
+    axes[1, 1].grid(True)
+    
+    plt.tight_layout()
+    
+    # salvar figura
+    plot_path = os.path.join('model_hands', 'training_history.png')
+    plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+    print(f"Grafico salvo em: {plot_path}")
+    
+    plt.show()
 
 if __name__ == "__main__":
-    print(" >> Treinamento do Modelo de Libras Melhorado <<")
     train_model_with_cross_validation() 

@@ -9,10 +9,10 @@ import os
 from collections import deque
 
 ##########################################
-largura_camera, altura_camera = 640, 480
+largura_camera, altura_camera = 1280, 720
 ##########################################
 
-# Tenta diferentes índices de câmera
+# tenta diferentes indices de camera
 for camera_index in [0, 1, 2]:
     captura = cv2.VideoCapture(camera_index)
     if captura.isOpened():
@@ -26,9 +26,8 @@ captura.set(3, largura_camera)
 captura.set(4, altura_camera)
 previous_time = 0
 
-detector = htm.handDetector()
+detector = htm.DetectorMao()
 
-# Variáveis para o sistema de Libras
 training_data = []
 current_letter = None
 collecting_data = False
@@ -36,27 +35,30 @@ model = None
 scaler_params = None
 labels = [chr(i) for i in range(65, 91)]  # A-Z
 
-# Sistema de votação para melhorar confiança
-prediction_buffer = deque(maxlen=5)  # Buffer das últimas 5 predições
-confidence_threshold = 0.7  # Threshold inicial de confiança
-min_votes = 3  # Mínimo de votos para aceitar uma letra
-letter_stability_time = 0.8  # Tempo mínimo para estabilizar uma letra
+prediction_buffer = deque(maxlen=5)  # buffer das ultimas 5 predicoes
+confidence_threshold = 0.7  # threshold inicial de confianca
+min_votes = 3  # minimo de votos para aceitar uma letra
+letter_stability_time = 0.8  # tempo minimo para estabilizar uma letra
+
+show_finger_info = True
+show_gesture_info = True
+show_hand_analysis = True
 
 def normalize_landmarks(landmarks, image_width=640, image_height=480):
     if len(landmarks) < 21:
         return None
     
-    # Extrair coordenadas do pulso (landmark 0)
+    # extrair coordenadas do pulso (landmark 0)
     wrist_x, wrist_y = landmarks[0][1], landmarks[0][2]
     
     normalized_features = []
     
-    # Normalizar todos os landmarks em relação ao pulso
+    # normalizar todos os landmarks em relacao ao pulso
     for i in range(21):
-        if i == 0:  # Pulso - usar coordenadas absolutas normalizadas
+        if i == 0:  # pulso - usar coordenadas absolutas normalizadas
             x_norm = landmarks[i][1] / image_width
             y_norm = landmarks[i][2] / image_height
-        else:  # Outros landmarks - coordenadas relativas ao pulso
+        else:  # outros landmarks - coordenadas relativas ao pulso
             x_norm = (landmarks[i][1] - wrist_x) / image_width
             y_norm = (landmarks[i][2] - wrist_y) / image_height
         
@@ -64,21 +66,21 @@ def normalize_landmarks(landmarks, image_width=640, image_height=480):
     
     return normalized_features
 
-def calculate_hand_features(landmarks):
+def calcularMaosFeatures(landmarks):
     if len(landmarks) < 21:
         return []
     
     features = []
     wrist = np.array([landmarks[0][1], landmarks[0][2]])
     
-    # Distâncias dos dedos ao pulso
-    finger_tips = [4, 8, 12, 16, 20]  # Pontas dos dedos
+    # distancias dos dedos ao pulso
+    finger_tips = [4, 8, 12, 16, 20]  # pontas dos dedos
     for tip_idx in finger_tips:
         tip = np.array([landmarks[tip_idx][1], landmarks[tip_idx][2]])
         distance = np.linalg.norm(tip - wrist)
         features.append(distance)
     
-    # Distâncias entre pontas dos dedos
+    # distancias entre pontas dos dedos
     for i in range(len(finger_tips)):
         for j in range(i+1, len(finger_tips)):
             tip1 = np.array([landmarks[finger_tips[i]][1], landmarks[finger_tips[i]][2]])
@@ -86,14 +88,14 @@ def calculate_hand_features(landmarks):
             distance = np.linalg.norm(tip1 - tip2)
             features.append(distance)
     
-    # Ângulos entre dedos
-    finger_joints = [3, 7, 11, 15, 19]  # Juntas dos dedos
+    # angulos entre dedos
+    finger_joints = [3, 7, 11, 15, 19]  # juntas dos dedos
     for i in range(len(finger_joints)):
         for j in range(i+1, len(finger_joints)):
             joint1 = np.array([landmarks[finger_joints[i]][1], landmarks[finger_joints[i]][2]])
             joint2 = np.array([landmarks[finger_joints[j]][1], landmarks[finger_joints[j]][2]])
             
-            # Calcular ângulo entre vetores
+            # calcular angulo entre vetores
             v1 = joint1 - wrist
             v2 = joint2 - wrist
             
@@ -107,12 +109,11 @@ def calculate_hand_features(landmarks):
     
     return features
 
-def get_voting_prediction():
-
+def get_votosPedict():
     if len(prediction_buffer) < min_votes:
         return None, 0.0
     
-    # Contar votos para cada letra
+    # contar votos para cada letra
     letter_counts = {}
     total_confidence = {}
     
@@ -123,12 +124,12 @@ def get_voting_prediction():
         letter_counts[letter] += 1
         total_confidence[letter] += confidence
     
-    # Encontrar a letra com mais votos
+    # encontrar a letra com mais votos
     max_votes = max(letter_counts.values())
     if max_votes < min_votes:
         return None, 0.0
     
-    # Se há empate, usar a confiança média
+    # se ha empate, usar a confianca media
     candidates = [letter for letter, votes in letter_counts.items() if votes == max_votes]
     
     if len(candidates) == 1:
@@ -136,7 +137,7 @@ def get_voting_prediction():
         avg_confidence = total_confidence[letter] / letter_counts[letter]
         return letter, avg_confidence
     
-    # Em caso de empate, escolher a com maior confiança média
+    # em caso de empate, escolher a com maior confianca media
     best_letter = None
     best_confidence = 0.0
     
@@ -148,33 +149,31 @@ def get_voting_prediction():
     
     return best_letter, best_confidence
 
-def is_valid_letter_sequence(current_word, new_letter):
+def sequenciValidaLetras(current_word, new_letter):
 
-    # Regras básicas de validação
     if not current_word:
         return True
     
-    # Evitar repetições excessivas da mesma letra
+    # evitar repeticoes excessivas da mesma letra
     if len(current_word) >= 2 and current_word[-1] == current_word[-2] == new_letter:
         return False
     
-    # Verificar se não é uma sequência impossível (ex: AAA, BBB)
+    # verificar se nao e uma sequencia impossivel (ex: AAA, BBB)
     if len(current_word) >= 3:
         last_three = current_word[-3:] + new_letter
-        if len(set(last_three)) == 1:  # Todas as letras são iguais
+        if len(set(last_three)) == 1:  # todas as letras sao iguais
             return False
     
     return True
 
-def save_training_data(data, letter):
-
+def modeloTreinado(data, letter):
     if not os.path.exists('model_hands'):
         os.makedirs('model_hands')
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = os.path.join('model_hands', f"training_data_{letter}_{timestamp}.csv")
     
-    # Converter landmarks para DataFrame
+    # converter landmarks para DataFrame
     df_data = []
     for landmarks, _ in data:
         row = {'letter': letter}
@@ -199,7 +198,7 @@ def load_model():
         print("Modelo melhorado carregado com sucesso!")
         return True
     except:
-        print("Modelo melhorado não encontrado na pasta 'model_hands'.")
+        print("Modelo melhorado nao encontrado na pasta 'model_hands'.")
         print("Tentando carregar modelo antigo...")
         try:
             model = tf.keras.models.load_model('libras_model.h5')
@@ -210,23 +209,19 @@ def load_model():
             print("Execute: python train_model.py")
             return False
 
-def predict_letter(landmarks):
+def predictLetra(landmarks):
     if model is None or len(landmarks) != 21:
         return None
     
-    # Normalizar landmarks
     normalized_features = normalize_landmarks(landmarks, largura_camera, altura_camera)
     if normalized_features is None:
         return None
     
-    # Calcular features adicionais
-    additional_features = calculate_hand_features(landmarks)
+    additional_features = calcularMaosFeatures(landmarks)
     
-    # Combinar features
     all_features = normalized_features + additional_features
     data = np.array([all_features])
     
-    # Aplicar normalização se disponível
     if scaler_params is not None:
         data = (data - scaler_params['mean']) / scaler_params['scale']
     
@@ -234,24 +229,22 @@ def predict_letter(landmarks):
     predicted_class = np.argmax(predictions[0])
     confidence = predictions[0][predicted_class]
     
-    # Retornar apenas se a confiança for maior que o threshold
     if confidence > confidence_threshold:
         return labels[predicted_class], confidence
     return None
 
 def start_data_collection():
-
     global collecting_data, current_letter, training_data
     
     print("\n" + "="*50)
     print("INICIANDO COLETA DE DADOS")
     print("="*50)
     
-    # Fechar temporariamente a janela da câmera para permitir input
+    # fechar temporariamente a janela da camera para permitir input
     cv2.destroyAllWindows()
     time.sleep(0.5)
     
-    print("LETRAS DISPONÍVEIS: A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z")
+    print("LETRAS DISPONIVEIS: A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z")
     print()
     
     while True:
@@ -262,15 +255,15 @@ def start_data_collection():
                 collecting_data = True
                 training_data = []
                 print(f"\nColetando dados para letra {letter}")
-                print("Mostre sua mão para a câmera e faça o gesto da letra")
+                print("Mostre sua mao para a camera e faca o gesto da letra")
                 print("Pressione 'c' novamente para parar a coleta")
                 print("Pressione 'q' para sair")
                 break
             else:
-                print(f"Letra inválida! Digite uma letra de A-Z")
-                print(f"Letras válidas: {', '.join(labels)}")
+                print(f"Letra invalida! Digite uma letra de A-Z")
+                print(f"Letras validas: {', '.join(labels)}")
         except KeyboardInterrupt:
-            print("\nOperação cancelada pelo usuário")
+            print("\nOperacao cancelada pelo usuario")
             return
         except Exception as e:
             print(f"Erro no input: {e}")
@@ -283,7 +276,6 @@ def start_data_collection():
         pass
 
 def stop_data_collection():
-
     global collecting_data, current_letter, training_data
     
     if collecting_data and training_data:
@@ -293,9 +285,9 @@ def stop_data_collection():
         print(f"Amostras coletadas: {len(training_data)}")
         print("="*50)
         
-        save_training_data(training_data, current_letter)
+        modeloTreinado(training_data, current_letter)
         
-        # Resetar variáveis
+        # resetar variaveis
         collecting_data = False
         current_letter = None
         training_data = []
@@ -305,11 +297,14 @@ def stop_data_collection():
         print("Nenhum dado coletado para salvar.")
 
 print("\n=== Reconhecimento de Libras Melhorado ===")
-print("Mostre sua mão para a câmera para começar")
+print("Mostre sua mao para a camera para comecar")
 print("Pressione 'c' para coletar dados de treinamento")
 print("Pressione 'l' para carregar o modelo treinado")
+print("Pressione 'f' para alternar informacoes dos dedos")
+print("Pressione 'g' para alternar informacoes de gestos")
+print("Pressione 'h' para alternar analise da mao")
 print("Pressione 'q' para sair")
-print("Pressione ' ' (espaço) para limpar a palavra atual")
+print("Pressione ' ' (espaco) para limpar a palavra atual")
 print("Pressione '+' ou '-' para ajustar a sensibilidade\n")
 
 current_word = ""
@@ -320,69 +315,86 @@ current_confidence = 0.0
 
 while True:
     sucesso, img = captura.read()
-    img = detector.findHands(img)
-    lmList = detector.findPosition(img, draw=False)
+    img = detector.encontrarMaos(img)
+    lmList = detector.encontrarPosicao(img, desenhar=False)
 
     current_time = time.time()
     fps = 1/(current_time - previous_time)
     previous_time = current_time
 
-    # Reconhecimento de letras com sistema de votação
+    # reconhecimento de letras com sistema de votacao
     if lmList and not collecting_data and model is not None:
-        prediction = predict_letter(lmList)
+        prediction = predictLetra(lmList)
         if prediction:
             letter, confidence = prediction
             prediction_buffer.append((letter, confidence))
             
-            # Usar sistema de votação
-            voted_letter, voted_confidence = get_voting_prediction()
+            voted_letter, voted_confidence = get_votosPedict()
             
             if voted_letter and voted_letter != last_letter and current_time - letter_time > letter_delay:
-                # Verificar se a sequência é válida
-                if is_valid_letter_sequence(current_word, voted_letter):
+                if sequenciValidaLetras(current_word, voted_letter):
                     current_word += voted_letter
                     current_confidence = voted_confidence
-                    print(f"\rPalavra atual: {current_word} (Confiança: {voted_confidence:.2f})", end="", flush=True)
+                    print(f"\rPalavra atual: {current_word} (Confianca: {voted_confidence:.2f})", end="", flush=True)
                     letter_time = current_time
                     last_letter = voted_letter
                 else:
-                    print(f"\rLetra rejeitada: {voted_letter} (sequência inválida)", end="", flush=True)
+                    print(f"\rLetra rejeitada: {voted_letter} (sequencia invalida)", end="", flush=True)
 
-    # Exibe informações na tela
     cv2.putText(img, f'FPS: {int(fps)}', (40, 50), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 0, 180), 3)
     
-    # Status do modelo
+
     if model is not None:
         cv2.putText(img, 'Modelo: Carregado', (40, 80), cv2.FONT_HERSHEY_COMPLEX, 0.8, (0, 255, 0), 2)
     else:
         cv2.putText(img, 'Modelo: Nao carregado', (40, 80), cv2.FONT_HERSHEY_COMPLEX, 0.8, (0, 0, 255), 2)
     
-    # Controles na tela
     cv2.putText(img, f'[c]: Coletar dados', (40, 110), cv2.FONT_HERSHEY_COMPLEX, 0.8, (255, 255, 255), 2)
     cv2.putText(img, f'[l]: Carregar modelo', (40, 140), cv2.FONT_HERSHEY_COMPLEX, 0.8, (255, 255, 255), 2)
-    cv2.putText(img, f'[ ]: Limpar palavra', (40, 170), cv2.FONT_HERSHEY_COMPLEX, 0.8, (255, 255, 255), 2)
-    cv2.putText(img, f'[++/-]: Sensibilidade', (40, 200), cv2.FONT_HERSHEY_COMPLEX, 0.8, (255, 255, 255), 2)
-    cv2.putText(img, f'[q]: Sair', (40, 230), cv2.FONT_HERSHEY_COMPLEX, 0.8, (255, 255, 255), 2)
+    cv2.putText(img, f'[f]: Info dedos', (40, 170), cv2.FONT_HERSHEY_COMPLEX, 0.8, (255, 255, 255), 2)
+    cv2.putText(img, f'[g]: Info gestos', (40, 200), cv2.FONT_HERSHEY_COMPLEX, 0.8, (255, 255, 255), 2)
+    cv2.putText(img, f'[h]: Analise mao', (40, 230), cv2.FONT_HERSHEY_COMPLEX, 0.8, (255, 255, 255), 2)
+    cv2.putText(img, f'[ ]: Limpar palavra', (40, 260), cv2.FONT_HERSHEY_COMPLEX, 0.8, (255, 255, 255), 2)
+    cv2.putText(img, f'[++/-]: Sensibilidade', (40, 290), cv2.FONT_HERSHEY_COMPLEX, 0.8, (255, 255, 255), 2)
+    cv2.putText(img, f'[q]: Sair', (40, 320), cv2.FONT_HERSHEY_COMPLEX, 0.8, (255, 255, 255), 2)
     
-    # Mostrar configurações atuais
-    cv2.putText(img, f'Threshold: {confidence_threshold:.2f}', (40, 260), cv2.FONT_HERSHEY_COMPLEX, 0.6, (255, 255, 0), 2)
-    cv2.putText(img, f'Votos min: {min_votes}', (40, 285), cv2.FONT_HERSHEY_COMPLEX, 0.6, (255, 255, 0), 2)
-    cv2.putText(img, f'Buffer: {len(prediction_buffer)}', (40, 310), cv2.FONT_HERSHEY_COMPLEX, 0.6, (255, 255, 0), 2)
+    # mostrar configuracoes atuais
+    cv2.putText(img, f'Threshold: {confidence_threshold:.2f}', (40, 350), cv2.FONT_HERSHEY_COMPLEX, 0.6, (255, 255, 0), 2)
+    cv2.putText(img, f'Votos min: {min_votes}', (40, 375), cv2.FONT_HERSHEY_COMPLEX, 0.6, (255, 255, 0), 2)
+    cv2.putText(img, f'Buffer: {len(prediction_buffer)}', (40, 400), cv2.FONT_HERSHEY_COMPLEX, 0.6, (255, 255, 0), 2)
     
     if collecting_data:
-        cv2.putText(img, f'Coletando dados: {current_letter}', (40, 340), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 255, 0), 3)
-        cv2.putText(img, f'Amostras: {len(training_data)}', (40, 380), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 255, 0), 3)
-        cv2.putText(img, "Pressione 'c' para parar", (40, 420), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 255, 255), 3)
+        cv2.putText(img, f'Coletando dados: {current_letter}', (40, 430), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 255, 0), 3)
+        cv2.putText(img, f'Amostras: {len(training_data)}', (40, 470), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 255, 0), 3)
+        cv2.putText(img, "Pressione 'c' para parar", (40, 510), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 255, 255), 3)
     
-    # Mostrar palavra atual na tela
+    # mostrar palavra atual na tela
     if current_word:
-        cv2.putText(img, f'Palavra: {current_word}', (40, 460), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 255, 255), 3)
+        cv2.putText(img, f'Palavra: {current_word}', (40, 550), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 255, 255), 3)
     
-    # Mostrar confiança atual
+    # mostrar confianca atual
     if current_confidence > 0:
         confidence_color = (0, 255, 0) if current_confidence > 0.8 else (0, 255, 255) if current_confidence > 0.6 else (0, 0, 255)
-        cv2.putText(img, f'Confiança: {current_confidence:.2f}', (40, 500), cv2.FONT_HERSHEY_COMPLEX, 0.8, confidence_color, 2)
+        cv2.putText(img, f'Confianca: {current_confidence:.2f}', (40, 590), cv2.FONT_HERSHEY_COMPLEX, 0.8, confidence_color, 2)
     
+    # informacoes detalhadas dos dedos e gestos
+    if lmList and show_finger_info:
+        img = detector.desenharInfoDedos(img, lmList)
+    
+    # informacoes de gestos
+    if lmList and show_gesture_info:
+        gesture = detector.obterGestoMao(lmList)
+        cv2.putText(img, f'Gesto: {gesture}', (largura_camera - 300, 50), cv2.FONT_HERSHEY_COMPLEX, 0.8, (255, 255, 0), 2)
+    
+    # analise da mao
+    if lmList and show_hand_analysis:
+        orientation = detector.obterOrientacaoMao(lmList)
+        area = detector.calcularAreaMao(lmList)
+        stability = "Estavel" if detector.maoEstaEstavel(lmList) else "Instavel"
+        
+        cv2.putText(img, f'Orientacao: {orientation}', (largura_camera - 300, 80), cv2.FONT_HERSHEY_COMPLEX, 0.6, (255, 255, 255), 2)
+        cv2.putText(img, f'Area: {area:.0f}', (largura_camera - 300, 105), cv2.FONT_HERSHEY_COMPLEX, 0.6, (255, 255, 255), 2)
+        cv2.putText(img, f'Estabilidade: {stability}', (largura_camera - 300, 130), cv2.FONT_HERSHEY_COMPLEX, 0.6, (255, 255, 255), 2)
     
     if not sucesso:
         print("Erro ao capturar frame!")
@@ -390,7 +402,6 @@ while True:
 
     cv2.imshow("Reconhecimento de Libras", img)
     
-
     key = cv2.waitKey(1) & 0xFF
     if key == ord('q'):
         print("\n\nPrograma finalizado!")
@@ -402,6 +413,15 @@ while True:
             stop_data_collection()
     elif key == ord('l'):
         load_model()
+    elif key == ord('f'):
+        show_finger_info = not show_finger_info
+        print(f"\rInformacoes dos dedos: {'Ativadas' if show_finger_info else 'Desativadas'}", end="", flush=True)
+    elif key == ord('g'):
+        show_gesture_info = not show_gesture_info
+        print(f"\rInformacoes de gestos: {'Ativadas' if show_gesture_info else 'Desativadas'}", end="", flush=True)
+    elif key == ord('h'):
+        show_hand_analysis = not show_hand_analysis
+        print(f"\rAnalise da mao: {'Ativada' if show_hand_analysis else 'Desativada'}", end="", flush=True)
     elif key == ord(' '):
         current_word = ""
         last_letter = None
@@ -415,7 +435,7 @@ while True:
         confidence_threshold = max(0.3, confidence_threshold - 0.05)
         print(f"\rThreshold ajustado para: {confidence_threshold:.2f}", end="", flush=True)
 
-    # Coletar dados de treinamento
+    # coletar dados de treinamento
     if lmList and collecting_data and current_letter:
         training_data.append((lmList, current_letter))
         print(f"\rAmostras coletadas: {len(training_data)}", end="", flush=True)

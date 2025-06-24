@@ -9,21 +9,20 @@ import seaborn as sns
 from collections import defaultdict
 
 def normalize_landmarks(landmarks, image_width=640, image_height=480):
-
     if len(landmarks) < 21:
         return None
     
-    # Extrair coordenadas do pulso (landmark 0)
+    # extrair coordenadas do pulso (landmark 0)
     wrist_x, wrist_y = landmarks[0][1], landmarks[0][2]
     
     normalized_features = []
     
-    # Normalizar todos os landmarks em relação ao pulso
+    # normalizar todos os landmarks em relacao ao pulso
     for i in range(21):
-        if i == 0:  # Pulso - usar coordenadas absolutas normalizadas
+        if i == 0:  # pulso - usar coordenadas absolutas normalizadas
             x_norm = landmarks[i][1] / image_width
             y_norm = landmarks[i][2] / image_height
-        else:  # Outros landmarks - coordenadas relativas ao pulso
+        else:  # outros landmarks - coordenadas relativas ao pulso
             x_norm = (landmarks[i][1] - wrist_x) / image_width
             y_norm = (landmarks[i][2] - wrist_y) / image_height
         
@@ -31,22 +30,21 @@ def normalize_landmarks(landmarks, image_width=640, image_height=480):
     
     return normalized_features
 
-def calculate_hand_features(landmarks):
-
+def calcularMaosFeatures(landmarks):
     if len(landmarks) < 21:
         return []
     
     features = []
     wrist = np.array([landmarks[0][1], landmarks[0][2]])
     
-    # Distâncias dos dedos ao pulso
-    finger_tips = [4, 8, 12, 16, 20]  # Pontas dos dedos
+    # distancias dos dedos ao pulso
+    finger_tips = [4, 8, 12, 16, 20]  # pontas dos dedos
     for tip_idx in finger_tips:
         tip = np.array([landmarks[tip_idx][1], landmarks[tip_idx][2]])
         distance = np.linalg.norm(tip - wrist)
         features.append(distance)
     
-    # Distâncias entre pontas dos dedos
+    # distancias entre pontas dos dedos
     for i in range(len(finger_tips)):
         for j in range(i+1, len(finger_tips)):
             tip1 = np.array([landmarks[finger_tips[i]][1], landmarks[finger_tips[i]][2]])
@@ -54,14 +52,14 @@ def calculate_hand_features(landmarks):
             distance = np.linalg.norm(tip1 - tip2)
             features.append(distance)
     
-    # Ângulos entre dedos
-    finger_joints = [3, 7, 11, 15, 19]  # Juntas dos dedos
+    # angulos entre dedos
+    finger_joints = [3, 7, 11, 15, 19]  # juntas dos dedos
     for i in range(len(finger_joints)):
         for j in range(i+1, len(finger_joints)):
             joint1 = np.array([landmarks[finger_joints[i]][1], landmarks[finger_joints[i]][2]])
             joint2 = np.array([landmarks[finger_joints[j]][1], landmarks[finger_joints[j]][2]])
             
-            # Calcular ângulo entre vetores
+            # calcular angulo entre vetores
             v1 = joint1 - wrist
             v2 = joint2 - wrist
             
@@ -76,27 +74,26 @@ def calculate_hand_features(landmarks):
     return features
 
 def load_model_and_data():
-
-    # Carregar modelo
+    # carregar modelo
     model_path = os.path.join('model_hands', 'libras_model_improved.h5')
     scaler_path = os.path.join('model_hands', 'scaler_params.npy')
     
     if not os.path.exists(model_path):
-        print("Modelo não encontrado! Execute train_model.py primeiro.")
-        return None, None, None
+        print("Modelo nao encontrado! Execute train_model.py primeiro.")
+        return None
     
     model = tf.keras.models.load_model(model_path)
     scaler_params = np.load(scaler_path, allow_pickle=True).item()
     
     print("Modelo carregado com sucesso!")
     
-    # Carregar dados
+    # carregar dados
     csv_pattern = os.path.join('model_hands', "training_data_*.csv")
     csv_files = glob.glob(csv_pattern)
     
     if not csv_files:
         print("Nenhum arquivo CSV encontrado!")
-        return None, None, None
+        return None
     
     all_data = []
     all_labels = []
@@ -113,15 +110,15 @@ def load_model_and_data():
                 y = row[f'y_{i}']
                 landmarks.append((i, x, y))
             
-            # Normalizar landmarks
+            # normalizar landmarks
             normalized_features = normalize_landmarks(landmarks)
             if normalized_features is None:
                 continue
             
-            # Calcular features adicionais
-            additional_features = calculate_hand_features(landmarks)
+            # calcular features adicionais
+            additional_features = calcularMaosFeatures(landmarks)
             
-            # Combinar features
+            # combinar features
             all_features = normalized_features + additional_features
             
             all_data.append(all_features)
@@ -131,24 +128,23 @@ def load_model_and_data():
     return model, scaler_params, np.array(all_data), np.array(all_labels), all_letters
 
 def evaluate_model_confidence(model, scaler_params, X, y, letters):
-
-    # Aplicar normalização
+    # aplicar normalizacao
     X_scaled = (X - scaler_params['mean']) / scaler_params['scale']
     
-    # Fazer predições
+    # fazer predicoes
     predictions = model.predict(X_scaled, verbose=0)
     predicted_classes = np.argmax(predictions, axis=1)
     confidence_scores = np.max(predictions, axis=1)
     
-    # Calcular accuracy geral
+    # calcular accuracy geral
     overall_accuracy = accuracy_score(y, predicted_classes)
     
-    # Avaliar diferentes thresholds de confiança
+    # avaliar diferentes thresholds de confianca
     thresholds = np.arange(0.3, 1.0, 0.05)
     threshold_results = []
     
     for threshold in thresholds:
-        # Filtrar predições com confiança acima do threshold
+        # filtrar predicoes com confianca acima do threshold
         high_confidence_mask = confidence_scores >= threshold
         if np.sum(high_confidence_mask) == 0:
             continue
@@ -157,7 +153,7 @@ def evaluate_model_confidence(model, scaler_params, X, y, letters):
         filtered_pred = predicted_classes[high_confidence_mask]
         filtered_conf = confidence_scores[high_confidence_mask]
         
-        # Calcular métricas
+        # calcular metricas
         accuracy = accuracy_score(filtered_y, filtered_pred)
         coverage = np.sum(high_confidence_mask) / len(y)
         avg_confidence = np.mean(filtered_conf)
@@ -172,7 +168,7 @@ def evaluate_model_confidence(model, scaler_params, X, y, letters):
     
     return threshold_results, predictions, predicted_classes, confidence_scores
 
-def analyze_per_letter_confidence(model, scaler_params, X, y, letters):
+def analiseConfiancaLetra(model, scaler_params, X, y, letters):
     X_scaled = (X - scaler_params['mean']) / scaler_params['scale']
     predictions = model.predict(X_scaled, verbose=0)
     
@@ -190,7 +186,7 @@ def analyze_per_letter_confidence(model, scaler_params, X, y, letters):
         if is_correct:
             letter_analysis[letter]['correct'] += 1
     
-    # Calcular métricas por letra
+    # calcular metricas por letra
     letter_metrics = {}
     for letter, data in letter_analysis.items():
         accuracy = data['correct'] / data['total']
@@ -208,7 +204,7 @@ def analyze_per_letter_confidence(model, scaler_params, X, y, letters):
 
 def plot_confidence_analysis(threshold_results, letter_metrics):
     plt.figure(figsize=(20, 12))
-    # Gráfico 1: Threshold vs Accuracy/Coverage
+    # grafico 1: threshold vs accuracy/coverage
     plt.subplot(2, 3, 1)
     thresholds = [r['threshold'] for r in threshold_results]
     accuracies = [r['accuracy'] for r in threshold_results]
@@ -222,7 +218,7 @@ def plot_confidence_analysis(threshold_results, letter_metrics):
     plt.legend()
     plt.grid(True)
     
-    # Gráfico 2: Accuracy por letra
+    # grafico 2: accuracy por letra
     plt.subplot(2, 3, 2)
     letters = list(letter_metrics.keys())
     accuracies = [letter_metrics[letter]['accuracy'] for letter in letters]
@@ -235,55 +231,55 @@ def plot_confidence_analysis(threshold_results, letter_metrics):
     plt.xticks(rotation=45)
     plt.grid(True, axis='y')
     
-    # Adicionar valores nas barras
+    # adicionar valores nas barras
     for bar, acc in zip(bars, accuracies):
         plt.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01, 
                 f'{acc:.2f}', ha='center', va='bottom')
     
-    # Gráfico 3: Confiança média por letra
+    # grafico 3: confianca media por letra
     plt.subplot(2, 3, 3)
     avg_confidences = [letter_metrics[letter]['avg_confidence'] for letter in letters]
     std_confidences = [letter_metrics[letter]['std_confidence'] for letter in letters]
     
     plt.errorbar(letters, avg_confidences, yerr=std_confidences, fmt='o-', capsize=5)
     plt.xlabel('Letra')
-    plt.ylabel('Confiança Média')
-    plt.title('Confiança Média por Letra')
+    plt.ylabel('Confianca Media')
+    plt.title('Confianca Media por Letra')
     plt.xticks(rotation=45)
     plt.grid(True)
     
-    # Gráfico 4: Número de amostras por letra
+    # grafico 4: numero de amostras por letra
     plt.subplot(2, 3, 4)
     samples = [letter_metrics[letter]['samples'] for letter in letters]
     plt.bar(letters, samples, color='skyblue')
     plt.xlabel('Letra')
-    plt.ylabel('Número de Amostras')
-    plt.title('Distribuição de Amostras por Letra')
+    plt.ylabel('Numero de Amostras')
+    plt.title('Distribuicao de Amostras por Letra')
     plt.xticks(rotation=45)
     plt.grid(True, axis='y')
     
-    # Gráfico 5: Threshold vs Número de Amostras
+    # grafico 5: threshold vs numero de amostras
     plt.subplot(2, 3, 5)
     samples_at_threshold = [r['samples'] for r in threshold_results]
     plt.plot(thresholds, samples_at_threshold, 'g-', linewidth=2)
     plt.xlabel('Confidence Threshold')
-    plt.ylabel('Número de Amostras')
+    plt.ylabel('Numero de Amostras')
     plt.title('Amostras por Threshold')
     plt.grid(True)
     
-    # Gráfico 6: Confiança vs Accuracy (scatter)
+    # grafico 6: confianca vs accuracy (scatter)
     plt.subplot(2, 3, 6)
     confidences = [letter_metrics[letter]['avg_confidence'] for letter in letters]
     plt.scatter(confidences, accuracies, s=100, alpha=0.7)
     
-    # Adicionar labels das letras
+    # adicionar labels das letras
     for i, letter in enumerate(letters):
         plt.annotate(letter, (confidences[i], accuracies[i]), 
                     xytext=(5, 5), textcoords='offset points')
     
-    plt.xlabel('Confiança Média')
+    plt.xlabel('Confianca Media')
     plt.ylabel('Accuracy')
-    plt.title('Confiança vs Accuracy por Letra')
+    plt.title('Confianca vs Accuracy por Letra')
     plt.grid(True)
     
     plt.tight_layout()
@@ -291,16 +287,15 @@ def plot_confidence_analysis(threshold_results, letter_metrics):
     plt.show()
 
 def generate_confidence_report(threshold_results, letter_metrics):
-
     print("\n" + "="*60)
-    print("RELATÓRIO DE CONFIANÇA DO MODELO")
+    print("RELATORIO DE CONFIANCA DO MODELO")
     print("="*60)
     
-    # Resumo geral
+
     print("\nRESUMO GERAL:")
     print(f"Total de letras analisadas: {len(letter_metrics)}")
     
-    # Melhores e piores letras
+    # melhores e piores letras
     sorted_letters = sorted(letter_metrics.items(), key=lambda x: x[1]['accuracy'], reverse=True)
     
     print(f"\nTOP 5 MELHORES LETRAS:")
@@ -311,61 +306,58 @@ def generate_confidence_report(threshold_results, letter_metrics):
     for i, (letter, metrics) in enumerate(sorted_letters[-5:]):
         print(f"{i+1}. {letter}: {metrics['accuracy']:.3f} (conf: {metrics['avg_confidence']:.3f})")
     
-    # Análise de threshold
-    print(f"\nANÁLISE DE THRESHOLD:")
+    print(f"\nANALISE DE THRESHOLD:")
     print("Threshold | Accuracy | Coverage | Amostras")
     print("-" * 45)
     
     for result in threshold_results:
         print(f"{result['threshold']:.2f}     | {result['accuracy']:.3f}    | {result['coverage']:.3f}     | {result['samples']}")
+
+    print(f"\nRECOMENDACOES:")
     
-    # Recomendações
-    print(f"\nRECOMENDAÇÕES:")
-    
-    # Encontrar threshold ótimo (balance entre accuracy e coverage)
+    # encontrar threshold otimo (balance entre accuracy e coverage)
     optimal_threshold = None
     best_score = 0
     
     for result in threshold_results:
-        # Score = accuracy * coverage (balance entre precisão e cobertura)
+        # score = accuracy * coverage (balance entre precisao e cobertura)
         score = result['accuracy'] * result['coverage']
         if score > best_score:
             best_score = score
             optimal_threshold = result['threshold']
     
-    print(f"• Threshold ótimo recomendado: {optimal_threshold:.2f}")
-    print(f"• Este threshold oferece o melhor balance entre precisão e cobertura")
+    print(f"• Threshold otimo recomendado: {optimal_threshold:.2f}")
+    print(f"• Este threshold oferece o melhor balance entre precisao e cobertura")
     
-    # Letras que precisam de mais dados
+
     low_accuracy_letters = [letter for letter, metrics in letter_metrics.items() 
                            if metrics['accuracy'] < 0.7]
     if low_accuracy_letters:
         print(f"• Letras que precisam de mais dados de treinamento: {', '.join(low_accuracy_letters)}")
     
-    # Salvar relatório em arquivo
+    # salvar relatorio em arquivo
     with open('model_hands/confidence_report.txt', 'w', encoding='utf-8') as f:
-        f.write("RELATÓRIO DE CONFIANÇA DO MODELO\n")
+        f.write("RELATORIO DE CONFIANCA DO MODELO\n")
         f.write("="*60 + "\n")
         f.write(f"Data: {pd.Timestamp.now()}\n\n")
         
         f.write("RESUMO GERAL:\n")
         f.write(f"Total de letras analisadas: {len(letter_metrics)}\n\n")
         
-        f.write("MÉTRICAS POR LETRA:\n")
-        f.write("Letra | Accuracy | Confiança Média | Amostras\n")
+        f.write("METRICAS POR LETRA:\n")
+        f.write("Letra | Accuracy | Confianca Media | Amostras\n")
         f.write("-" * 50 + "\n")
         for letter in sorted(letter_metrics.keys()):
             metrics = letter_metrics[letter]
             f.write(f"{letter}     | {metrics['accuracy']:.3f}    | {metrics['avg_confidence']:.3f}        | {metrics['samples']}\n")
         
-        f.write(f"\nTHRESHOLD ÓTIMO: {optimal_threshold:.2f}\n")
+        f.write(f"\nTHRESHOLD OTIMO: {optimal_threshold:.2f}\n")
     
-    print(f"\nRelatório salvo em: model_hands/confidence_report.txt")
+    print(f"\nRelatorio salvo em: model_hands/confidence_report.txt")
 
 def main():
-    print("=== Validação e Análise de Confiança do Modelo ===")
+    print(">>> Validacao e Analise de Confianca do Modelo <<<")
     
-    # Carregar modelo e dados
     result = load_model_and_data()
     if result is None:
         return
@@ -373,26 +365,22 @@ def main():
     model, scaler_params, X, y, letters = result
     
     print(f"Dados carregados: {len(X)} amostras")
-    print(f"Letras únicas: {sorted(set(letters))}")
+    print(f"Letras unicas: {sorted(set(letters))}")
     
-    # Avaliar confiança
-    print("\nAvaliando confiança do modelo...")
+    print("\nAvaliando confianca do modelo...")
     threshold_results, predictions, predicted_classes, confidence_scores = evaluate_model_confidence(
         model, scaler_params, X, y, letters
     )
     
-    # Analisar por letra
-    print("Analisando confiança por letra...")
-    letter_metrics = analyze_per_letter_confidence(model, scaler_params, X, y, letters)
+    print("Analisando confianca por letra...")
+    letter_metrics = analiseConfiancaLetra(model, scaler_params, X, y, letters)
     
-    # Gerar relatório
     generate_confidence_report(threshold_results, letter_metrics)
     
-    # Plotar gráficos
-    print("\nGerando gráficos de análise...")
+    print("\nGerando graficos de analise...")
     plot_confidence_analysis(threshold_results, letter_metrics)
     
-    print("\nAnálise concluída!")
+    print("\nAnalise concluida!")
     print("Arquivos gerados:")
     print("• model_hands/confidence_analysis.png")
     print("• model_hands/confidence_report.txt")
